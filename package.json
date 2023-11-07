@@ -5,7 +5,7 @@
   "main": "app.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "pm2 start ./ecosystem.config.cjs"
   },
   "author": "Bogdan Calina",
   "license": "ISC",

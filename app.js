@@ -1,65 +1,49 @@
-import { JSDOM } from 'jsdom';
 import notifier from 'node-notifier';
+import sleep from './sleep.js';
+import job from './job.js';
+import os from 'node:os';
 
-let cachedReport = null;
+const SCRAPING_INTERVAL_MS = 1000 * 50 * 5;
 
-async function requestWebpage() {
-    const response = await fetch('https://www.cec.ro/istoric-curs-valutar?c=2&v=EUR');
-    return response.text();
+function notifyBeforeExit() {
+    notifier.notify({
+        title: 'CEC exchange',
+        message: `process stopped`,
+        timeout: 3600,
+        sound: true
+    });
+
+    process.exit(os.constants.signals.SIGINT);
 }
 
-function checkReportDiff(report) {
-    if (report['Data'] !== cachedReport['Data']) {
-        const diff = Number(cachedReport['Vânzare']) - Number(report['Vânzare']);
+async function bootstrap() {
+    process.once('SIGINT', notifyBeforeExit);
+    process.once('SIGTERM', notifyBeforeExit);
+    process.once('SIGTSTP', notifyBeforeExit);
 
-        notifier.notify({
-            title: 'CEC new exchange',
-            message: `${ report['Data'] } diff ${ diff }`
-        });
+    notifier.notify({
+        title: 'CEC exchange',
+        message: `process started`,
+        timeout: 3600,
+        sound: true
+    });
 
-        console.log(report);
+    while (true) {
+        try {
+            await job();
+        } catch (e) {
+            notifier.notify({
+                title: 'CEC exchange',
+                message: 'Error, check logs',
+                timeout: 3600,
+                sound: true
+            });
+
+            console.error(e);
+        } finally {
+            await sleep(SCRAPING_INTERVAL_MS);
+        }
     }
 }
 
-function generateReport(html) {
-    const dom = new JSDOM(html);
-    const rows = dom.window.document.querySelectorAll('tr');
-
-    const attributes = [...rows[0].querySelectorAll('th')].map(h => h.textContent);
-    const latestValues = [...rows[1].querySelectorAll('td')].map(h => h.textContent);
-
-    let report = {};
-
-    for (const [i, attribute] of Object.entries(attributes)) {
-        report[attribute] = latestValues[i];
-    }
-
-    return report;
-}
-
-
-const sleep = ms => new Promise(r => {
-    setTimeout(r, ms)
-});
-
-async function main() {
-    const html = await requestWebpage();
-    const report = generateReport(html);
-
-    if (cachedReport) {
-        checkReportDiff(report);
-    }
-
-    cachedReport = report;
-
-    await sleep(60000);
-
-    await main();
-}
-
-notifier.notify({
-    title: 'CEC exchange',
-    message: `scraping...`
-});
-
-main();
+bootstrap();
